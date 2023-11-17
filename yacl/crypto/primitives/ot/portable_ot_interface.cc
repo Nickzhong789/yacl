@@ -38,12 +38,13 @@ void PortableOtInterface::Recv(const std::shared_ptr<link::Context> &ctx,
   }
 
   const auto &RO = RandomOracle::GetDefault();
+  std::vector<std::array<unsigned char, PACKBYTES>> send_msgs(kNumOt);
 
   for (int i = 0; i < kNumOt; i++) {
     const int batch_size = std::min(1, kNumOt - i);
 
     unsigned char messages[1][HASHBYTES];
-    unsigned char rs_pack[PACKBYTES];
+    auto *rs_pack = reinterpret_cast<unsigned char *>(send_msgs[i].data());
     unsigned char batch_choices[1] = {0};
 
     for (int j = 0; j < batch_size; j++) {
@@ -51,7 +52,6 @@ void PortableOtInterface::Recv(const std::shared_ptr<link::Context> &ctx,
     }
 
     portable_receiver_rsgen(&receiver, rs_pack, batch_choices);
-    ctx->Send(ctx->NextRank(), rs_pack, fmt::format("BASE_OT:{}", i));
 
     portable_receiver_keygen(&receiver, &messages[0]);
     for (int j = 0; j < batch_size; ++j) {
@@ -62,10 +62,13 @@ void PortableOtInterface::Recv(const std::shared_ptr<link::Context> &ctx,
       // even though there's already a hash in sender_keygen_check, we need to
       // hash again with the index i to ensure security
       // ref: https://eprint.iacr.org/2021/682
-      Buffer buf(&messages[j][0], sizeof(uint128_t));
+      ByteContainerView buf(&messages[j][0], sizeof(uint128_t));
       recv_blocks[i + j] = RO.Gen<uint128_t>(buf, i + j);
     }
   }
+  ctx->SendAsync(ctx->NextRank(),
+                 ByteContainerView(send_msgs.data(), kNumOt * PACKBYTES),
+                 fmt::format("BASE_OT:RS_PACK"));
 }
 
 void PortableOtInterface::Send(const std::shared_ptr<link::Context> &ctx,
@@ -76,19 +79,19 @@ void PortableOtInterface::Send(const std::shared_ptr<link::Context> &ctx,
   // Send S_pack.
   unsigned char S_pack[PACKBYTES];
   portable_sender_genS(&sender, S_pack);
-  ctx->Send(ctx->NextRank(), S_pack, "BASE_OT:S_PACK");
+  ctx->SendAsync(ctx->NextRank(), S_pack, "BASE_OT:S_PACK");
 
   const auto &RO = RandomOracle::GetDefault();
+  auto buffer = ctx->Recv(ctx->NextRank(), fmt::format("BASE_OT:RS_PACK"));
+  YACL_ENFORCE_EQ(buffer.size(), static_cast<int64_t>(kNumOt * PACKBYTES));
 
   for (int i = 0; i < kNumOt; i++) {
     const int batch_size = std::min(1, kNumOt - i);
 
-    unsigned char rs_pack[PACKBYTES];
+    auto *rs_pack =
+        reinterpret_cast<unsigned char *>(buffer.data()) + i * PACKBYTES;
     unsigned char messages[2][1][HASHBYTES];
 
-    auto buffer = ctx->Recv(ctx->NextRank(), fmt::format("BASE_OT:{}", i));
-    YACL_ENFORCE_EQ(buffer.size(), static_cast<int64_t>(sizeof(rs_pack)));
-    std::memcpy(rs_pack, buffer.data(), buffer.size());
     if (!portable_sender_keygen_check(&sender, rs_pack, messages)) {
       YACL_THROW("simplest-ot: sender_keygen failed");
     }
@@ -105,8 +108,8 @@ void PortableOtInterface::Send(const std::shared_ptr<link::Context> &ctx,
       // even though there's already a hash in sender_keygen_check, we need to
       // hash again with the index i to ensure security
       // ref: https://eprint.iacr.org/2021/682
-      Buffer buf0(&messages[0][j][0], sizeof(uint128_t));
-      Buffer buf1(&messages[1][j][0], sizeof(uint128_t));
+      ByteContainerView buf0(&messages[0][j][0], sizeof(uint128_t));
+      ByteContainerView buf1(&messages[1][j][0], sizeof(uint128_t));
 
       send_blocks[i + j][0] = RO.Gen<uint128_t>(buf0, i + j);
       send_blocks[i + j][1] = RO.Gen<uint128_t>(buf1, i + j);

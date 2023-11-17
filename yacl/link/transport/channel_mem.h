@@ -76,6 +76,7 @@ class ChannelMem final : public IChannel {
   void SetThrottleWindowSize(size_t) final {}
   void TestSend(uint32_t /*timeout*/) final {}
   void TestRecv() final {}
+  void SetChunkParallelSendSize(size_t) final {}
   // no affect
 
  private:
@@ -85,7 +86,7 @@ class ChannelMem final : public IChannel {
   // message database related.
   std::mutex msg_mutex_;
   std::condition_variable msg_db_cond_;
-  std::unordered_map<std::string, Buffer> msg_db_;
+  std::unordered_map<std::string, Buffer> recv_msgs_;
 
   std::chrono::milliseconds recv_timeout_ms_ =
       3UL * 60 * std::chrono::milliseconds(1000);

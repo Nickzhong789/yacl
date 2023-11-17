@@ -86,7 +86,8 @@ class Exception : public std::exception {
   Exception() = default;
   explicit Exception(std::string msg) : msg_(std::move(msg)) {}
   explicit Exception(const char* msg) : msg_(msg) {}
-  explicit Exception(const std::string& msg, void** stacks, int dep) {
+  explicit Exception(std::string msg, void** stacks, int dep)
+      : msg_(std::move(msg)) {
     for (int i = 0; i < dep; ++i) {
       std::array<char, 2048> tmp;
       const char* symbol = "(unknown)";
@@ -95,8 +96,6 @@ class Exception : public std::exception {
       }
       stack_trace_.append(fmt::format("#{} {}+{}\n", i, symbol, stacks[i]));
     }
-
-    msg_ = fmt::format("{}\nStacktrace:\n{}", msg, stack_trace_);
   }
   const char* what() const noexcept override { return msg_.c_str(); }
 
@@ -135,6 +134,23 @@ class NetworkError : public IoError {
   using IoError::IoError;
 };
 
+class LinkError : public NetworkError {
+ public:
+  LinkError() = delete;
+  explicit LinkError(const std::string& msg, int code, int http_code = 0)
+      : NetworkError(msg), code_(code), http_code_(http_code) {}
+  explicit LinkError(const std::string& msg, void** stacks, int dep, int code,
+                     int http_code = 0)
+      : NetworkError(msg, stacks, dep), code_(code), http_code_(http_code) {}
+
+  int code() const noexcept { return code_; }
+  int http_code() const noexcept { return http_code_; }
+
+ private:
+  int code_;
+  int http_code_;
+};
+
 #define YACL_ERROR_MSG(...) \
   fmt::format("[{}:{}] {}", __FILE__, __LINE__, fmt::format(__VA_ARGS__))
 
@@ -149,56 +165,67 @@ using stacktrace_t = std::array<void*, ::yacl::internal::kMaxStackTraceDep>;
 //   ...
 // }
 //
-#define YACL_THROW(...)                                                    \
-  do {                                                                     \
-    ::yacl::stacktrace_t stacks;                                           \
-    int dep = absl::GetStackTrace(stacks.data(),                           \
-                                  ::yacl::internal::kMaxStackTraceDep, 0); \
-    throw ::yacl::RuntimeError(YACL_ERROR_MSG(__VA_ARGS__), stacks.data(), \
-                               dep);                                       \
+#define YACL_THROW(...)                                                        \
+  do {                                                                         \
+    ::yacl::stacktrace_t __stacks__;                                           \
+    int __dep__ = absl::GetStackTrace(__stacks__.data(),                       \
+                                      ::yacl::internal::kMaxStackTraceDep, 0); \
+    throw ::yacl::RuntimeError(YACL_ERROR_MSG(__VA_ARGS__), __stacks__.data(), \
+                               __dep__);                                       \
   } while (false)
 
 #define YACL_THROW_LOGIC_ERROR(...)                                            \
   do {                                                                         \
-    ::yacl::stacktrace_t stacks;                                               \
-    int dep = absl::GetStackTrace(stacks.data(),                               \
-                                  ::yacl::internal::kMaxStackTraceDep, 0);     \
-    throw ::yacl::LogicError(YACL_ERROR_MSG(__VA_ARGS__), stacks.data(), dep); \
+    ::yacl::stacktrace_t __stacks__;                                           \
+    int __dep__ = absl::GetStackTrace(__stacks__.data(),                       \
+                                      ::yacl::internal::kMaxStackTraceDep, 0); \
+    throw ::yacl::LogicError(YACL_ERROR_MSG(__VA_ARGS__), __stacks__.data(),   \
+                             __dep__);                                         \
   } while (false)
 
-#define YACL_THROW_IO_ERROR(...)                                            \
-  do {                                                                      \
-    ::yacl::stacktrace_t stacks;                                            \
-    int dep = absl::GetStackTrace(stacks.data(),                            \
-                                  ::yacl::internal::kMaxStackTraceDep, 0);  \
-    throw ::yacl::IoError(YACL_ERROR_MSG(__VA_ARGS__), stacks.data(), dep); \
+#define YACL_THROW_IO_ERROR(...)                                               \
+  do {                                                                         \
+    ::yacl::stacktrace_t __stacks__;                                           \
+    int __dep__ = absl::GetStackTrace(__stacks__.data(),                       \
+                                      ::yacl::internal::kMaxStackTraceDep, 0); \
+    throw ::yacl::IoError(YACL_ERROR_MSG(__VA_ARGS__), __stacks__.data(),      \
+                          __dep__);                                            \
   } while (false)
 
-#define YACL_THROW_NETWORK_ERROR(...)                                      \
-  do {                                                                     \
-    ::yacl::stacktrace_t stacks;                                           \
-    int dep = absl::GetStackTrace(stacks.data(),                           \
-                                  ::yacl::internal::kMaxStackTraceDep, 0); \
-    throw ::yacl::NetworkError(YACL_ERROR_MSG(__VA_ARGS__), stacks.data(), \
-                               dep);                                       \
+#define YACL_THROW_NETWORK_ERROR(...)                                          \
+  do {                                                                         \
+    ::yacl::stacktrace_t __stacks__;                                           \
+    int __dep__ = absl::GetStackTrace(__stacks__.data(),                       \
+                                      ::yacl::internal::kMaxStackTraceDep, 0); \
+    throw ::yacl::NetworkError(YACL_ERROR_MSG(__VA_ARGS__), __stacks__.data(), \
+                               __dep__);                                       \
   } while (false)
 
-#define YACL_THROW_INVALID_FORMAT(...)                                      \
-  do {                                                                      \
-    ::yacl::stacktrace_t stacks;                                            \
-    int dep = absl::GetStackTrace(stacks.data(),                            \
-                                  ::yacl::internal::kMaxStackTraceDep, 0);  \
-    throw ::yacl::InvalidFormat(YACL_ERROR_MSG(__VA_ARGS__), stacks.data(), \
-                                dep);                                       \
+#define YACL_THROW_LINK_ERROR(code, http_code, ...)                            \
+  do {                                                                         \
+    ::yacl::stacktrace_t __stacks__;                                           \
+    int __dep__ = absl::GetStackTrace(__stacks__.data(),                       \
+                                      ::yacl::internal::kMaxStackTraceDep, 0); \
+    throw ::yacl::LinkError(YACL_ERROR_MSG(__VA_ARGS__), __stacks__.data(),    \
+                            __dep__, code, http_code);                         \
   } while (false)
 
-#define YACL_THROW_ARGUMENT_ERROR(...)                                      \
-  do {                                                                      \
-    ::yacl::stacktrace_t stacks;                                            \
-    int dep = absl::GetStackTrace(stacks.data(),                            \
-                                  ::yacl::internal::kMaxStackTraceDep, 0);  \
-    throw ::yacl::ArgumentError(YACL_ERROR_MSG(__VA_ARGS__), stacks.data(), \
-                                dep);                                       \
+#define YACL_THROW_INVALID_FORMAT(...)                                         \
+  do {                                                                         \
+    ::yacl::stacktrace_t __stacks__;                                           \
+    int __dep__ = absl::GetStackTrace(__stacks__.data(),                       \
+                                      ::yacl::internal::kMaxStackTraceDep, 0); \
+    throw ::yacl::InvalidFormat(YACL_ERROR_MSG(__VA_ARGS__),                   \
+                                __stacks__.data(), __dep__);                   \
+  } while (false)
+
+#define YACL_THROW_ARGUMENT_ERROR(...)                                         \
+  do {                                                                         \
+    ::yacl::stacktrace_t __stacks__;                                           \
+    int __dep__ = absl::GetStackTrace(__stacks__.data(),                       \
+                                      ::yacl::internal::kMaxStackTraceDep, 0); \
+    throw ::yacl::ArgumentError(YACL_ERROR_MSG(__VA_ARGS__),                   \
+                                __stacks__.data(), __dep__);                   \
   } while (false)
 
 // For Status.
@@ -252,16 +279,16 @@ class EnforceNotMet : public Exception {
 
 // If you don't want to print stacktrace in error message, use
 // "YACL_ENFORCE_THAT" instead.
-#define YACL_ENFORCE(condition, ...)                                         \
-  do {                                                                       \
-    if (!(condition)) {                                                      \
-      ::yacl::stacktrace_t stacks;                                           \
-      int dep = absl::GetStackTrace(stacks.data(),                           \
-                                    ::yacl::internal::kMaxStackTraceDep, 0); \
-      throw ::yacl::EnforceNotMet(__FILE__, __LINE__, #condition,            \
-                                  ::yacl::internal::Format(__VA_ARGS__),     \
-                                  stacks.data(), dep);                       \
-    }                                                                        \
+#define YACL_ENFORCE(condition, ...)                                     \
+  do {                                                                   \
+    if (!(condition)) {                                                  \
+      ::yacl::stacktrace_t __stacks__;                                   \
+      int __dep__ = absl::GetStackTrace(                                 \
+          __stacks__.data(), ::yacl::internal::kMaxStackTraceDep, 0);    \
+      throw ::yacl::EnforceNotMet(__FILE__, __LINE__, #condition,        \
+                                  ::yacl::internal::Format(__VA_ARGS__), \
+                                  __stacks__.data(), __dep__);           \
+    }                                                                    \
   } while (false)
 
 /**
