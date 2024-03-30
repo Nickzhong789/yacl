@@ -137,6 +137,16 @@ void Context::WaitLinkTaskFinish() {
   }
 }
 
+void Context::AbortLink() {
+  YACL_ENFORCE(is_sub_world_ == false,
+               "DO NOT call AbortLink on sub world link");
+  for (const auto& l : channels_) {
+    if (l) {
+      l->Abort();
+    }
+  }
+}
+
 void Context::ConnectToMesh(spdlog::level::level_enum connect_log_level) {
   SPDLOG_COND(connect_log_level, "connecting to mesh, id={}, self={}", Id(),
               Rank());
@@ -325,9 +335,13 @@ Buffer Context::RecvInternal(size_t src_rank, const std::string& key) {
   return value;
 }
 
-std::unique_ptr<Context> Context::Spawn() {
+std::unique_ptr<Context> Context::Spawn(const std::string& id) {
   ContextDesc sub_desc = desc_;
-  sub_desc.id = fmt::format("{}-{}", desc_.id, child_counter_++);
+  if (id.empty()) {
+    sub_desc.id = fmt::format("{}-{}", desc_.id, child_counter_++);
+  } else {
+    sub_desc.id = fmt::format("{}-{}", desc_.id, id);
+  }
 
   // sub-context share the same event-loop and statistics with parent.
   auto sub_ctx =

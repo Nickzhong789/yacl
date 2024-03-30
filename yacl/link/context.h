@@ -27,7 +27,7 @@
 #include "yacl/link/retry_options.h"
 #include "yacl/link/ssl_options.h"
 #include "yacl/link/transport/channel.h"
-#include "yacl/utils/hash.h"
+#include "yacl/utils/hash_combine.h"
 
 #include "yacl/link/link.pb.h"
 
@@ -139,6 +139,8 @@ struct ContextDesc {
   std::string link_type = kDefaultLinkType;
 
   RetryOptions retry_opts;
+
+  bool disable_msg_seq_id = false;
 
   bool operator==(const ContextDesc& other) const {
     return (id == other.id) && (parties == other.parties);
@@ -263,7 +265,7 @@ class Context {
   void ConnectToMesh(
       spdlog::level::level_enum connect_log_level = spdlog::level::debug);
 
-  std::unique_ptr<Context> Spawn();
+  std::unique_ptr<Context> Spawn(const std::string& id = "");
 
   // Create a new Context from a subset of original parities.
   // Party which not in `sub_parties` should not call the SubWorld() method.
@@ -277,6 +279,8 @@ class Context {
   uint64_t GetRecvTimeout() const;
 
   void WaitLinkTaskFinish();
+
+  void AbortLink();
 
   void SetThrottleWindowSize(size_t);
 
@@ -325,7 +329,6 @@ class Context {
   // stateful properties.
   size_t counter_ = 0U;  // collective algorithm counter.
   std::map<P2PDirection, int> p2p_counter_;
-
   size_t child_counter_ = 0U;
 
   uint64_t recv_timeout_ms_;

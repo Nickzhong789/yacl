@@ -26,6 +26,8 @@
 
 namespace yacl::link::transport {
 
+#define YACL_UNLIKELY(x) __builtin_expect(!!(x), 0)
+
 namespace {
 // use acsii control code inside ack/fin msg key.
 // avoid conflict to normal msg key.
@@ -53,11 +55,15 @@ std::string BuildChannelKey(std::string_view msg_key, size_t seq_id) {
 }
 
 std::pair<std::string, size_t> SplitChannelKey(std::string_view key) {
-  auto pos = key.find(kSeqKey);
-
   std::pair<std::string, size_t> ret;
-  ret.first = key.substr(0, pos);
-  ret.second = ViewToSizeT(key.substr(pos + kSeqKey.size()));
+  auto pos = key.find(kSeqKey);
+  if (YACL_UNLIKELY(pos == std::string_view::npos)) {
+    ret.first = key;
+    ret.second = 0;
+  } else {
+    ret.first = key.substr(0, pos);
+    ret.second = ViewToSizeT(key.substr(pos + kSeqKey.size()));
+  }
 
   return ret;
 }
@@ -155,6 +161,10 @@ void Channel::SendThread() {
     auto seq_id = msg.value().seq_id_;
     SubmitSendTask(std::move(msg.value()));
     ThrottleWindowWait(seq_id);
+  }
+
+  if (aborting_.load()) {
+    return;  // stop send thread immediately
   }
 
   // link is closing, send all pending msgs
@@ -310,6 +320,9 @@ void Channel::SendRequestWithRetry(const ::google::protobuf::Message& request,
                                    spdlog::level::level_enum log_level) const {
   uint32_t retry_count = 0;
   while (true) {
+    if (aborting_.load()) {
+      YACL_THROW_LINK_ABORTED("channel is aborting");
+    }
     try {
       link_->SendRequest(request, timeout_override_ms);
       break;
@@ -370,6 +383,9 @@ void Channel::SendTaskSynchronizer::SendTaskFinishedNotify(size_t seq_id) {
 void Channel::SendTaskSynchronizer::WaitSeqIdSendFinished(size_t seq_id) {
   std::unique_lock<bthread::Mutex> lock(mutex_);
   while (!finished_ids_.Contains(seq_id)) {
+    if (task_aborting_.load()) {
+      YACL_THROW_LINK_ABORTED("aborting task, skip waiting");
+    }
     finished_cond_.wait(lock);
   }
 }
@@ -382,6 +398,9 @@ void Channel::SendTaskSynchronizer::WaitAllSendFinished() {
 }
 
 Buffer Channel::Recv(const std::string& msg_key) {
+  if (aborting_.load()) {
+    YACL_THROW_LINK_ABORTED("Recv is not allowed when aborting channel");
+  }
   NormalMessageKeyEnforce(msg_key);
 
   Buffer value;
@@ -399,6 +418,9 @@ Buffer Channel::Recv(const std::string& msg_key) {
       }
     };
     while (!stop_waiting()) {
+      if (aborting_.load()) {
+        YACL_THROW_LINK_ABORTED("Aborting channel, skip waiting");
+      }
       //                                timeout_us
       if (msg_db_cond_.wait_for(lock, static_cast<int64_t>(recv_timeout_ms_) *
                                           1000) == ETIMEDOUT) {
@@ -553,15 +575,33 @@ void Channel::MessageQueue::Push(Message&& msg) {
 }
 
 void Channel::SendAsync(const std::string& msg_key, Buffer&& value) {
+  if (aborting_.load()) {
+    YACL_THROW_LINK_ABORTED(
+        "SendAsync is not allowed when channel is aborting");
+  }
   YACL_ENFORCE(!waiting_finish_.load(),
                "SendAsync is not allowed when channel is closing");
   NormalMessageKeyEnforce(msg_key);
-  size_t seq_id = msg_seq_id_.fetch_add(1) + 1;
-  auto key = BuildChannelKey(msg_key, seq_id);
+
+  size_t seq_id = 0;
+  std::string key;
+  if (YACL_UNLIKELY(disable_msg_seq_id_)) {
+    key = msg_key;
+  } else {
+    seq_id = msg_seq_id_.fetch_add(1) + 1;
+    key = BuildChannelKey(msg_key, seq_id);
+  }
   send_msgs_.Push(Message(seq_id, std::move(key), std::move(value)));
 }
 
 void Channel::Send(const std::string& msg_key, ByteContainerView value) {
+  if (aborting_.load()) {
+    YACL_THROW_LINK_ABORTED("Send is not allowed when channel is aborting");
+  }
+  if (YACL_UNLIKELY(disable_msg_seq_id_)) {
+    YACL_THROW("Send is not allowed when msg_seq_id is disabled");
+  }
+
   YACL_ENFORCE(!waiting_finish_.load(),
                "Send is not allowed when channel is closing");
   NormalMessageKeyEnforce(msg_key);
@@ -577,6 +617,14 @@ void Channel::SendAsyncThrottled(const std::string& msg_key,
 }
 
 void Channel::SendAsyncThrottled(const std::string& msg_key, Buffer&& value) {
+  if (aborting_.load()) {
+    YACL_THROW_LINK_ABORTED(
+        "SendAsyncThrottled is not allowed when channel is aborting");
+  }
+  if (YACL_UNLIKELY(disable_msg_seq_id_)) {
+    return SendAsync(msg_key, value);
+  }
+
   YACL_ENFORCE(!waiting_finish_.load(),
                "SendAsync is not allowed when channel is closing");
   NormalMessageKeyEnforce(msg_key);
@@ -587,6 +635,9 @@ void Channel::SendAsyncThrottled(const std::string& msg_key, Buffer&& value) {
 }
 
 void Channel::TestSend(uint32_t timeout) {
+  if (aborting_.load()) {
+    YACL_THROW_LINK_ABORTED("TestSend is not allowed when channel is aborting");
+  }
   YACL_ENFORCE(!waiting_finish_.load(),
                "TestSend is not allowed when channel is closing");
   const auto msg_key = fmt::format("connect_{}", link_->LocalRank());
@@ -607,6 +658,9 @@ void Channel::ThrottleWindowWait(size_t wait_count) {
   std::unique_lock<bthread::Mutex> lock(msg_mutex_);
   while ((throttle_window_size_ != 0) &&
          (received_ack_ids_.Count() + throttle_window_size_ <= wait_count)) {
+    if (aborting_.load()) {
+      YACL_THROW_LINK_ABORTED("Aborting channel, skip waiting");
+    }
     //                               timeout_us
     if (ack_fin_cond_.wait_for(
             lock, static_cast<int64_t>(recv_timeout_ms_) * 1000) == ETIMEDOUT) {
@@ -681,6 +735,10 @@ void Channel::WaitForFlyingAck() {
 }
 
 void Channel::WaitLinkTaskFinish() {
+  if (aborting_.load()) {
+    SPDLOG_WARN("channel aborted, can not wait for link task finish");
+    return;
+  }
   // 4 steps to total stop link.
   // send ack for msg exist in recv_msgs_ that unread by up layer logic.
   // stop OnMessage & auto ack all normal msg from now on.
@@ -697,8 +755,28 @@ void Channel::WaitLinkTaskFinish() {
   // after all, we can safely close server port and exit.
 }
 
+void Channel::Abort() {
+  SPDLOG_INFO("channel aborting");
+  aborting_.store(true);
+  // notify for Recv to stop.
+  msg_db_cond_.notify_all();
+  // notify for ThrottleWindowWait to stop.
+  ack_fin_cond_.notify_all();
+  // stop SendTaskSynchronizer to avoid blocking in Send
+  send_sync_.Abort();
+  // stop send thread
+  send_thread_stopped_.store(true);
+  send_msgs_.EmptyNotify();
+  send_thread_.join();
+
+  SPDLOG_INFO("channel aborted");
+}
+
 void Channel::OnRequest(const ::google::protobuf::Message& request,
                         ::google::protobuf::Message* response) {
+  if (aborting_.load()) {
+    YACL_THROW_LINK_ABORTED("OnRequest is not allowed when aborting channel");
+  }
   YACL_ENFORCE(response != nullptr, "response should not be null");
   YACL_ENFORCE(link_ != nullptr, "delegate should not be null");
 
@@ -722,5 +800,7 @@ void Channel::OnRequest(const ::google::protobuf::Message& request,
     link_->FillResponseError(request, response);
   }
 }
+
+#undef YACL_UNLIKELY
 
 }  // namespace yacl::link::transport

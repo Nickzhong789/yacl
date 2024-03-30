@@ -26,6 +26,7 @@ yacl_cc_library(
 
 yacl_cc_library(
     name = "spec_traits",
+    srcs = ["spec_traits.cc"],
     hdrs = ["spec_traits.h"],
 )
 
@@ -34,5 +35,6 @@ yacl_cc_test(
     srcs = ["buffer_test.cc"],
     deps = [
         ":buffer",
+        "@com_github_msgpack_msgpack//:msgpack",
     ],
 )

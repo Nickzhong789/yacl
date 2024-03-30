@@ -14,10 +14,24 @@
 
 version: 2.1
 
+parameters:
+  GHA_Event:
+    type: string
+    default: ""
+  GHA_Actor:
+    type: string
+    default: ""
+  GHA_Action:
+    type: string
+    default: ""
+  GHA_Meta:
+    type: string
+    default: ""
+
 setup: true
 
 orbs:
-  path-filtering: circleci/path-filtering@0.1.4
+  path-filtering: circleci/path-filtering@1.0.0
 
 workflows:
   unittest-workflow:
@@ -31,4 +45,4 @@ workflows:
             .bazelrc build-and-run true
             .bazelversion build-and-run true
             .circleci/.* build-and-run true
-            bazel/.* build-and-run true
+            WORKSPACE build-and-run true

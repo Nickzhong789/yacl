@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//bazel:yacl.bzl", "yacl_cc_binary", "yacl_cc_library", "yacl_cc_test")
-load("@rules_proto//proto:defs.bzl", "proto_library")
-load("@rules_cc//cc:defs.bzl", "cc_proto_library")
+load("//bazel:yacl.bzl", "OMP_CFLAGS", "OMP_DEPS", "OMP_LINKFLAGS", "yacl_cc_binary", "yacl_cc_library", "yacl_cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -65,66 +63,46 @@ yacl_cc_test(
 )
 
 yacl_cc_library(
-    name = "thread_pool",
-    srcs = ["thread_pool.cc"],
-    hdrs = ["thread_pool.h"],
-    deps = [
-        "//yacl/base:exception",
-    ],
-)
-
-yacl_cc_test(
-    name = "thread_pool_test",
-    srcs = ["thread_pool_test.cc"],
-    deps = [
-        ":thread_pool",
-    ],
-)
-
-yacl_cc_library(
     name = "parallel",
     srcs = [
-        "parallel_common.cc",
-        "parallel_native.cc",
+        "parallel.cc",
     ],
     hdrs = [
         "parallel.h",
-        "parallel_native.h",
     ],
-    visibility = ["//visibility:public"],
     deps = [
         ":thread_pool",
-        "//yacl/base:exception",
+    ],
+)
+
+# deprecated, use serializer instead
+yacl_cc_library(
+    name = "serialize",
+    hdrs = ["serialize.h"],
+    deps = [
+        ":serializer",
+    ],
+)
+
+yacl_cc_library(
+    name = "serializer",
+    hdrs = [
+        "serializer.h",
+        "serializer_adapter.h",
+    ],
+    deps = [
+        "@com_github_msgpack_msgpack//:msgpack",
+        "@yacl//yacl/base:byte_container_view",
+        "@yacl//yacl/base:int128",
+        "@yacl//yacl/io/msgpack:buffer",
     ],
 )
 
 yacl_cc_test(
-    name = "parallel_test",
-    srcs = ["parallel_test.cc"],
+    name = "serializer_test",
+    srcs = ["serializer_test.cc"],
     deps = [
-        ":parallel",
-    ],
-)
-
-proto_library(
-    name = "serializable_proto",
-    srcs = ["serializable.proto"],
-)
-
-cc_proto_library(
-    name = "serializable_cc_proto",
-    deps = [":serializable_proto"],
-)
-
-yacl_cc_library(
-    name = "serialize",
-    srcs = ["serialize.cc"],
-    hdrs = ["serialize.h"],
-    deps = [
-        ":serializable_cc_proto",
-        "//yacl/base:buffer",
-        "//yacl/base:byte_container_view",
-        "//yacl/base:int128",
+        ":serializer",
     ],
 )
 
@@ -143,8 +121,8 @@ yacl_cc_test(
 )
 
 yacl_cc_library(
-    name = "hash",
-    hdrs = ["hash.h"],
+    name = "hash_combine",
+    hdrs = ["hash_combine.h"],
 )
 
 yacl_cc_library(
@@ -227,7 +205,7 @@ yacl_cc_test(
     srcs = ["cuckoo_index_test.cc"],
     deps = [
         ":cuckoo_index",
-        "//yacl/crypto/utils:rand",
+        "//yacl/crypto/rand",
     ],
 )
 
@@ -255,5 +233,41 @@ yacl_cc_test(
     linkstatic = True,
     deps = [
         ":platform_utils",
+    ],
+)
+
+yacl_cc_test(
+    name = "parallel_test",
+    srcs = ["parallel_test.cc"],
+    deps = [
+        ":parallel",
+        "//yacl/base:exception",
+    ],
+)
+
+yacl_cc_binary(
+    name = "parallel_bench",
+    srcs = ["parallel_bench.cc"],
+    copts = OMP_CFLAGS,
+    linkopts = OMP_LINKFLAGS,
+    deps = [
+        ":parallel",
+        "@com_github_google_benchmark//:benchmark",
+    ] + OMP_DEPS,
+)
+
+yacl_cc_library(
+    name = "thread_pool",
+    srcs = ["thread_pool.cc"],
+    hdrs = ["thread_pool.h"],
+    deps = [
+        "//yacl/base:exception",
+    ],
+)
+
+yacl_cc_library(
+    name = "compile_time_utils",
+    hdrs = [
+        "compile_time_utils.h",
     ],
 )

@@ -17,10 +17,12 @@
 #include "fmt/ostream.h"
 #include "libtommath/tommath.h"
 
+#include "yacl/base/exception.h"
+
 namespace fmt {
 template <>
 struct formatter<mp_err> : ostream_formatter {};
 }  // namespace fmt
 
 #define MPINT_ENFORCE_OK(MP_ERR, ...) \
-  YACL_ENFORCE_EQ((MP_ERR), MP_OKAY, __VA_ARGS__)
+  YACL_ENFORCE_EQ((MP_ERR), MP_OKAY, ##__VA_ARGS__)

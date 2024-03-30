@@ -75,10 +75,10 @@ index be02c50a..186abe54 100644
          }
          return true;
 diff --git a/BUILD.bazel b/BUILD.bazel
-index 5e59bd1c..9df99bfc 100644
+index 0bdaa4d3..b23881b3 100644
 --- a/BUILD.bazel
 +++ b/BUILD.bazel
-@@ -48,7 +48,7 @@ LINKOPTS = [
+@@ -51,7 +51,7 @@ LINKOPTS = [
      "-pthread",
      "-ldl",
  ] + select({
@@ -87,7 +87,7 @@ index 5e59bd1c..9df99bfc 100644
          "-framework CoreFoundation",
          "-framework CoreGraphics",
          "-framework CoreData",
-@@ -206,7 +206,7 @@ BUTIL_SRCS = [
+@@ -217,7 +217,7 @@ BUTIL_SRCS = [
      "src/butil/recordio.cc",
      "src/butil/popen.cpp",
  ] + select({
@@ -96,16 +96,13 @@ index 5e59bd1c..9df99bfc 100644
          "src/butil/time/time_mac.cc",
          "src/butil/mac/scoped_mach_port.cc",
      ],
-@@ -314,15 +314,14 @@ cc_library(
+@@ -326,17 +326,17 @@ cc_library(
      visibility = ["//visibility:public"],
      deps = [
          "@com_github_gflags_gflags//:gflags",
 -        "@com_github_madler_zlib//:zlib",
 +        "@zlib//:zlib",
          "@com_google_protobuf//:protobuf",
--        "@openssl//:crypto",
--        "@openssl//:ssl",
-+        "@com_github_openssl_openssl//:openssl",
      ] + select({
          "//bazel/config:brpc_with_glog": ["@com_github_google_glog//:glog"],
          "//conditions:default": [],
@@ -113,8 +110,13 @@ index 5e59bd1c..9df99bfc 100644
 -        "@bazel_tools//tools/osx:darwin": [":macos_lib"],
 +        "@bazel_tools//src/conditions:darwin": [":macos_lib"],
          "//conditions:default": [],
+     }) + select({
+         "//bazel/config:brpc_with_boringssl": ["@boringssl//:ssl", "@boringssl//:crypto"],
+-        "//conditions:default": ["@openssl//:ssl", "@openssl//:crypto"],
++        "//conditions:default": ["@com_github_openssl_openssl//:openssl"],
      }),
  )
+
 diff --git a/bazel/config/BUILD.bazel b/bazel/config/BUILD.bazel
 index 4471bad1..d9cc6bd6 100644
 --- a/bazel/config/BUILD.bazel
@@ -142,3 +144,18 @@ index a2eea9cf..d5c7372f 100644
      "//conditions:default": [
          "test_file_util_linux.cc",
          "proc_maps_linux_unittest.cc",
+diff --git a/BUILD.bazel b/BUILD.bazel
+index 0bdaa4d3..43597f63 100644
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -45,6 +45,10 @@ COPTS = [
+ }) + select({
+     "//bazel/config:brpc_with_rdma": ["-DBRPC_WITH_RDMA=1"],
+     "//conditions:default": [""],
++}) + select({
++    # Force linux aarch to use O1 build
++    "@bazel_tools//src/conditions:linux_aarch64": ["-O1"],
++    "//conditions:default": [""],
+ })
+
+ LINKOPTS = [

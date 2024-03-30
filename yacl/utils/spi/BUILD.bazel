@@ -1,4 +1,4 @@
-# Copyright 2022 Ant Group Co., Ltd.
+# Copyright 2023 Ant Group Co., Ltd.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ yacl_cc_library(
     deps = [
         "//yacl/base:exception",
         "//yacl/math/mpint",
+        "//yacl/utils:parallel",
         "@com_google_absl//absl/types:span",
     ],
 )
