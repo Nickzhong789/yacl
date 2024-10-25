@@ -14,6 +14,8 @@
 
 workspace(name = "yacl")
 
+# yacl's dependencies
+
 load("//bazel:repositories.bzl", "yacl_deps")
 
 yacl_deps()
@@ -32,6 +34,17 @@ rules_foreign_cc_dependencies(
     register_default_tools = False,
     register_preinstalled_tools = True,
 )
+
+load(
+    "@build_bazel_apple_support//lib:repositories.bzl",
+    "apple_support_dependencies",
+)
+
+apple_support_dependencies()
+
+load("@bazel_features//:deps.bzl", "bazel_features_deps")
+
+bazel_features_deps()
 
 load("@com_google_protobuf//:protobuf_deps.bzl", "protobuf_deps")
 

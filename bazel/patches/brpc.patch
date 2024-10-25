@@ -96,7 +96,7 @@ index 0bdaa4d3..b23881b3 100644
          "src/butil/time/time_mac.cc",
          "src/butil/mac/scoped_mach_port.cc",
      ],
-@@ -326,17 +326,17 @@ cc_library(
+@@ -326,13 +326,13 @@ cc_library(
      visibility = ["//visibility:public"],
      deps = [
          "@com_github_gflags_gflags//:gflags",
@@ -112,10 +112,6 @@ index 0bdaa4d3..b23881b3 100644
          "//conditions:default": [],
      }) + select({
          "//bazel/config:brpc_with_boringssl": ["@boringssl//:ssl", "@boringssl//:crypto"],
--        "//conditions:default": ["@openssl//:ssl", "@openssl//:crypto"],
-+        "//conditions:default": ["@com_github_openssl_openssl//:openssl"],
-     }),
- )
 
 diff --git a/bazel/config/BUILD.bazel b/bazel/config/BUILD.bazel
 index 4471bad1..d9cc6bd6 100644
@@ -159,3 +155,16 @@ index 0bdaa4d3..43597f63 100644
  })
 
  LINKOPTS = [
+diff --git a/src/brpc/versioned_ref_with_id.h b/src/brpc/versioned_ref_with_id.h
+index c78f019b..68dda744 100644
+--- a/src/brpc/versioned_ref_with_id.h
++++ b/src/brpc/versioned_ref_with_id.h
+@@ -617,7 +617,7 @@ template<typename T>
+ std::string VersionedRefWithId<T>::description() const {
+     std::string result;
+     result.reserve(128);
+-    butil::string_appendf(&result, "Socket{id=%" PRIu64, id());
++    butil::string_appendf(&result, "Socket{id=%d", (int)id());
+     result.append(WRAPPER_CALL(
+         OnDescription, const_cast<T*>(static_cast<const T*>(this))));
+     butil::string_appendf(&result, "} (0x%p)", this);

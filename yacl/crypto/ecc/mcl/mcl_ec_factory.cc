@@ -14,7 +14,7 @@
 
 #include "yacl/crypto/ecc/mcl/mcl_ec_group.h"
 
-namespace yacl::crypto::hmcl {
+namespace yacl::crypto {
 
 std::map<CurveName, int> Name2MclCurveEnum = {
     {"secp192k1", MCL_SECP192K1},
@@ -28,17 +28,17 @@ std::map<CurveName, int> Name2MclCurveEnum = {
     {"secp160k1", MCL_SECP160K1},
 };
 
-#define CASE_DEFINE(mcl_curve_macro, class_name)                         \
-  case mcl_curve_macro: {                                                \
-    static auto generator = [&] {                                        \
-      auto p = std::make_shared<class_name::Ec>();                       \
-      mcl::initCurve<class_name::Ec, class_name::Fr>(                    \
-          curve_type, p.get(), mcl::fp::Mode::FP_AUTO, mcl::ec::Jacobi); \
-      return p;                                                          \
-    }();                                                                 \
-    YACL_ENFORCE(!generator->isZero());                                  \
-    return std::unique_ptr<EcGroup>(                                     \
-        new class_name(meta, curve_type, AnyPtr(generator)));            \
+#define CASE_DEFINE(mcl_curve_macro, class_name)                               \
+  case mcl_curve_macro: {                                                      \
+    static auto generator = [&] {                                              \
+      auto p = std::make_shared<class_name::Ec>();                             \
+      mcl::initCurve<class_name::Ec>(curve_type, p.get(),                      \
+                                     mcl::fp::Mode::FP_AUTO, mcl::ec::Jacobi); \
+      return p;                                                                \
+    }();                                                                       \
+    YACL_ENFORCE(!generator->isZero());                                        \
+    return std::unique_ptr<EcGroup>(                                           \
+        new class_name(meta, curve_type, AnyPtr(generator)));                  \
   }
 
 std::unique_ptr<EcGroup> MclEGFactory::Create(const CurveMeta& meta) {
@@ -66,4 +66,4 @@ bool MclEGFactory::IsSupported(const CurveMeta& meta) {
 REGISTER_EC_LIBRARY(kLibName, 400, MclEGFactory::IsSupported,
                     MclEGFactory::Create);
 
-}  // namespace yacl::crypto::hmcl
+}  // namespace yacl::crypto

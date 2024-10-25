@@ -30,6 +30,11 @@ enum class PointOctetFormat {
   // The format is determined by the library itself.
   Autonomous,
 
+  // Uncompressed format
+  // The point is encoded as x||y
+  // For X25519, only need the x value
+  Uncompressed,
+
   // ANSI X9.62 compressed format
   // The point is encoded as z||x, where the octet z specifies which solution of
   // the quadratic equation y is.
@@ -84,12 +89,13 @@ struct AffinePoint {
 // Feel free to add more storage types if you need.
 // Here are some examples:
 using Array32 = std::array<unsigned char, 32>;  // exactly 256bits
+using Array128 = std::array<unsigned char, 128>;
 using Array160 =
     std::array<unsigned char, 160>;  // enough to store four 40B points
 
 // The storage format inside EcPoint is explained by each curve itself, here is
 // a black box
-using EcPoint = std::variant<Array32, Array160, AnyPtr, AffinePoint>;
+using EcPoint = std::variant<Array32, Array128, Array160, AnyPtr, AffinePoint>;
 
 inline auto format_as(const AffinePoint &ap) { return fmt::streamed(ap); }
 

@@ -65,9 +65,14 @@ def _yacl_copts():
 
 def yacl_cc_binary(
         copts = [],
+        linkopts = [],
         **kargs):
     cc_binary(
-        copts = copts + _yacl_copts(),
+        copts = copts + _yacl_copts() + select({
+            "@yacl//bazel/config:gm": ["-DYACL_WITH_TONGSUO"],
+            "//conditions:default": [],
+        }),
+        linkopts = linkopts + ["-ldl"],
         **kargs
     )
 
@@ -76,7 +81,10 @@ def yacl_cc_library(
         deps = [],
         **kargs):
     cc_library(
-        copts = _yacl_copts() + copts,
+        copts = _yacl_copts() + copts + select({
+            "@yacl//bazel/config:gm": ["-DYACL_WITH_TONGSUO"],
+            "//conditions:default": [],
+        }),
         deps = deps + [
             "@com_github_gabime_spdlog//:spdlog",
         ],
@@ -96,11 +104,16 @@ def yacl_configure_make(**attrs):
 def yacl_cc_test(
         copts = [],
         deps = [],
+        linkopts = [],
         **kwargs):
     cc_test(
-        copts = _yacl_copts() + copts,
+        copts = _yacl_copts() + copts + select({
+            "@yacl//bazel/config:gm": ["-DYACL_WITH_TONGSUO"],
+            "//conditions:default": [],
+        }),
         deps = deps + [
             "@com_google_googletest//:gtest_main",
         ],
+        linkopts = linkopts + ["-ldl"],
         **kwargs
     )

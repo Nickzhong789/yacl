@@ -19,11 +19,8 @@
 #include <string_view>
 #include <unordered_set>
 
-#include "yacl/base/int128.h"
 #include "yacl/crypto/openssl_wrappers.h"
 #include "yacl/crypto/rand/drbg/drbg.h"
-#include "yacl/crypto/rand/entropy_source/entropy_source.h"
-#include "yacl/secparam.h"
 #include "yacl/utils/spi/argument/arg_set.h"
 
 namespace yacl::crypto {
@@ -35,45 +32,46 @@ namespace yacl::crypto {
 // For openssl docs, see: https://www.openssl.org/docs/man3.1/man3/EVP_RAND.html
 class OpensslDrbg : public Drbg {
  public:
+  // This is all the supported types of OpensslDrbg.
   static constexpr std::array<std::string_view, 3> TypeList = {
       "CTR-DRBG",
       "HASH-DRBG",
       "HMAC-DRBG",
   };
 
-  explicit OpensslDrbg(std::string type, bool use_yacl_es = true,
-                       SecParam::C secparam = SecParam::C::k128);
+  // Constructor. "type" should one of the string in OpensslDrbg::TypeList;
+  explicit OpensslDrbg(std::string type,
+                       const std::shared_ptr<EntropySource> &es = nullptr);
 
+  // Destructor
   ~OpensslDrbg() override;
 
-  // create drbg instance
+  // reseed this drbg
+  void ReSeed() final;
+
+  // Fill "buf" with random bytes with size "len".
+  void Fill(char *buf, size_t len) final;
+
+  // SPI: Get the lib name
+  std::string Name() override { return "OpenSSL"; }
+
+  // SPI: Create drbg instance
   static std::unique_ptr<Drbg> Create(const std::string &type,
                                       const SpiArgs &config) {
     YACL_ENFORCE(Check(type, config));  // make sure check passes
-    return std::make_unique<OpensslDrbg>(
-        absl::AsciiStrToUpper(type), config.GetOrDefault(ArgUseYaclEs, true),
-        config.GetOrDefault(ArgSecParamC, SecParam::C::k128));
+    return std::make_unique<OpensslDrbg>(absl::AsciiStrToUpper(type));
   }
 
-  // this checker would return ture only for ctr-drbg type
+  // SPI: Check drbg avaliability
   static bool Check(const std::string &type,
                     [[maybe_unused]] const SpiArgs &config) {
     return find(begin(TypeList), end(TypeList), absl::AsciiStrToUpper(type)) !=
            end(TypeList);
   }
 
-  // fill buffer with randomness
-  void Fill(char *buf, size_t len) final;
-
-  // get the lib name
-  std::string Name() override { return "OpenSSL"; }
-
  private:
   const std::string type_;
-  const SecParam::C secparam_;
   openssl::UniqueRandCtx ctx_;
 };
-
-REGISTER_DRBG_LIBRARY("OpenSSL", 100, OpensslDrbg::Check, OpensslDrbg::Create);
 
 }  // namespace yacl::crypto
